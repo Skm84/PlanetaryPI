@@ -16,7 +16,7 @@ DAYS_PER_YEAR_IDX = 3
 LONG_DIVISOR_IDX = 4
 REF_OFFSET_IDX = 5
 
-# Constants per planet
+# Planet constants + reference
 PLANET_CONSTANTS = {
     "Earth": {
         "constants": [86400, 24, 3600, 365, 15.0, 0],
@@ -36,15 +36,17 @@ PLANET_CONSTANTS = {
     }
 }
 
-# -------------------------------
+# ----------------------------------------------------
 # Helper functions
 
-def parse_earth_datetime(date_str, time_str, tz_str):
+def convert_earth_to_earth(date_str, time_str, from_tz, to_tz):
     dt = datetime.strptime(f"{date_str} {time_str}", "%d/%m/%Y %H:%M:%S")
-    return dt.replace(tzinfo=ZoneInfo(tz_str))
+    dt = dt.replace(tzinfo=ZoneInfo(from_tz))
+    return dt.astimezone(ZoneInfo(to_tz)).strftime("%d/%m/%Y %H:%M:%S")
 
-def format_earth_datetime(dt, tz_str):
-    return dt.astimezone(ZoneInfo(tz_str)).strftime("%d/%m/%Y %H:%M:%S")
+def convert_planet_to_same_planet(date_str, time_str, planet_constants, from_long, to_long):
+    earth_dt = convert_planet_to_earth_datetime(date_str, time_str, planet_constants, from_long)
+    return convert_from_earth(earth_dt, planet_constants, to_long)
 
 def convert_from_earth(earth_dt, planet_constants, longitude):
     sol_seconds, hours_per_day, hour_length, year_days, long_div, offset = planet_constants
@@ -57,16 +59,14 @@ def convert_from_earth(earth_dt, planet_constants, longitude):
     frac = adjusted - day_count
     total_sec = frac * sol_seconds
     hour = int(total_sec // hour_length)
-    min = int((total_sec % hour_length) // 60)
-    sec = int((total_sec % hour_length) % 60)
+    minute = int((total_sec % hour_length) // 60)
+    second = int((total_sec % hour_length) % 60)
     year = day_count // year_days
     day = (day_count % year_days) + 1
-    return f"{year}/{day:02d} {hour:02}:{min:02}:{sec:02}"
+    return f"{year}/{day:02d} {hour:02}:{minute:02}:{second:02}"
 
 def convert_planet_to_earth_datetime(planet_dt_str, time_str, planet_constants, longitude):
-    date_parts = planet_dt_str.split("/")
-    year = int(date_parts[0])
-    day = int(date_parts[1])
+    year, day = map(int, planet_dt_str.split("/"))
     hour, minute, second = map(int, time_str.split(":"))
 
     sol_seconds, hours_per_day, hour_length, year_days, long_div, offset = planet_constants
@@ -80,9 +80,9 @@ def convert_planet_to_earth_datetime(planet_dt_str, time_str, planet_constants, 
 
 def convert_to_earth_string(planet_dt_str, time_str, planet_constants, longitude, tz):
     earth_dt = convert_planet_to_earth_datetime(planet_dt_str, time_str, planet_constants, longitude)
-    return format_earth_datetime(earth_dt, tz)
+    return earth_dt.astimezone(ZoneInfo(tz)).strftime("%d/%m/%Y %H:%M:%S")
 
-# -------------------------------
+# ----------------------------------------------------
 # API route
 
 @app.route("/api/convert", methods=["POST"])
@@ -109,21 +109,20 @@ def convert_api():
     try:
         if from_planet == to_planet:
             if from_planet == "Earth":
-                dt = parse_earth_datetime(date, time, from_tz)
-                result = format_earth_datetime(dt, to_tz)
+                result = convert_earth_to_earth(date, time, from_tz, to_tz)
             else:
-                earth_dt = convert_planet_to_earth_datetime(date, time, from_constants, from_long)
-                result = convert_from_earth(earth_dt, to_constants, to_long)
+                result = convert_planet_to_same_planet(date, time, from_constants, from_long, to_long)
 
         elif from_planet == "Earth":
-            earth_dt = parse_earth_datetime(date, time, from_tz)
-            result = convert_from_earth(earth_dt, to_constants, to_long)
+            dt = datetime.strptime(f"{date} {time}", "%d/%m/%Y %H:%M:%S")
+            dt = dt.replace(tzinfo=ZoneInfo(from_tz))
+            result = convert_from_earth(dt, to_constants, to_long)
 
         elif to_planet == "Earth":
             result = convert_to_earth_string(date, time, from_constants, from_long, to_tz)
 
         else:
-            # FULL interplanetary: planet → Earth → planet
+            # Interplanetary (non-Earth): from → Earth → to
             earth_dt = convert_planet_to_earth_datetime(date, time, from_constants, from_long)
             result = convert_from_earth(earth_dt, to_constants, to_long)
 
@@ -132,7 +131,7 @@ def convert_api():
 
     return jsonify({"result": result})
 
-# -------------------------------
+# ----------------------------------------------------
 # Entry point
 
 if __name__ == "__main__":
