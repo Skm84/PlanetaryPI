@@ -112,7 +112,6 @@ def convert_api():
                 dt = parse_earth_datetime(date, time, from_tz)
                 result = format_earth_datetime(dt, to_tz)
             else:
-                # Same planet conversion via Earth for longitude change
                 earth_dt = convert_planet_to_earth_datetime(date, time, from_constants, from_long)
                 result = convert_from_earth(earth_dt, to_constants, to_long)
 
