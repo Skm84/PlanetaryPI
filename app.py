@@ -1,3 +1,10 @@
+
+
+###DONT RUN THIS FILE LOCALLY, IT IS THE API SOURCE CODE AND WILL NOT DO ANYTHING
+###DEVELOPED AND TESTED BY SAI SATHANAPALLI - FOR QUESTIONS AND INQUIRIES, EMAIL 18SAISATHANAPALLI@GMAIL.COM
+###IF YOU WISH TO CALL THE API USE THE URL: "https://planetarypi.onrender.com/api/convert"
+
+
 from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify
 
