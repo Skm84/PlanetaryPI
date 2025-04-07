@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify
+
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -15,7 +16,7 @@ DAYS_PER_YEAR_IDX = 3
 LONG_DIVISOR_IDX = 4
 REF_OFFSET_IDX = 5
 
-# Planet constants + reference date
+# Planet constants + reference
 PLANET_CONSTANTS = {
     "Earth": {
         "constants": [86400, 24, 3600, 365, 15.0, 0],
@@ -63,14 +64,11 @@ def convert_from_earth(earth_dt, planet_constants, longitude):
     return f"{year}/{day:02d} {hour:02}:{min:02}:{sec:02}"
 
 
-def convert_to_earth(planet_dt_str, time_str, planet_constants, longitude, tz):
-    try:
-        date_parts = planet_dt_str.split("/")
-        year = int(date_parts[0])
-        day = int(date_parts[1])
-        hour, minute, second = map(int, time_str.split(":"))
-    except Exception as e:
-        return f"Error parsing planetary date/time: {e}"
+def convert_planet_to_earth_datetime(planet_dt_str, time_str, planet_constants, longitude):
+    date_parts = planet_dt_str.split("/")
+    year = int(date_parts[0])
+    day = int(date_parts[1])
+    hour, minute, second = map(int, time_str.split(":"))
 
     sol_seconds, hours_per_day, hour_length, year_days, long_div, offset = planet_constants
     time_sec = hour * hour_length + minute * 60 + second
@@ -79,7 +77,11 @@ def convert_to_earth(planet_dt_str, time_str, planet_constants, longitude, tz):
     adjusted_days = total_days - long_offset
     elapsed_sec = adjusted_days * sol_seconds - offset
     ref_dt = PLANET_CONSTANTS["Earth"]["reference"]
-    earth_dt = ref_dt + timedelta(seconds=elapsed_sec)
+    return ref_dt + timedelta(seconds=elapsed_sec)
+
+
+def convert_to_earth_string(planet_dt_str, time_str, planet_constants, longitude, tz):
+    earth_dt = convert_planet_to_earth_datetime(planet_dt_str, time_str, planet_constants, longitude)
     return format_earth_datetime(earth_dt, tz)
 
 
@@ -107,12 +109,11 @@ def convert_api():
     try:
         if from_planet == to_planet:
             if from_planet == "Earth":
-                earth_dt = parse_earth_datetime(date, time, from_tz)
-                result = format_earth_datetime(earth_dt, to_tz)
+                dt = parse_earth_datetime(date, time, from_tz)
+                result = format_earth_datetime(dt, to_tz)
             else:
-                # Convert to Earth then back to same planet at new longitude
-                intermediate = convert_to_earth(date, time, from_constants, from_long, "UTC")
-                earth_dt = datetime.strptime(intermediate, "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+                # Same-planet (non-Earth) conversion via Earth
+                earth_dt = convert_planet_to_earth_datetime(date, time, from_constants, from_long)
                 result = convert_from_earth(earth_dt, to_constants, to_long)
 
         elif from_planet == "Earth":
@@ -120,11 +121,11 @@ def convert_api():
             result = convert_from_earth(earth_dt, to_constants, to_long)
 
         elif to_planet == "Earth":
-            result = convert_to_earth(date, time, from_constants, from_long, to_tz)
+            result = convert_to_earth_string(date, time, from_constants, from_long, to_tz)
 
         else:
-            intermediate = convert_to_earth(date, time, from_constants, from_long, "UTC")
-            earth_dt = datetime.strptime(intermediate, "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+            # Planet → Planet (convert to Earth datetime, then to target)
+            earth_dt = convert_planet_to_earth_datetime(date, time, from_constants, from_long)
             result = convert_from_earth(earth_dt, to_constants, to_long)
 
     except Exception as e:
