@@ -7,7 +7,7 @@ except ImportError:
 
 app = Flask(__name__)
 
-# Index map for constants
+# Index map
 SOL_SECONDS_IDX = 0
 HOURS_PER_DAY_IDX = 1
 HOUR_LENGTH_IDX = 2
@@ -15,7 +15,7 @@ DAYS_PER_YEAR_IDX = 3
 LONG_DIVISOR_IDX = 4
 REF_OFFSET_IDX = 5
 
-# Planet constants and reference time
+# Planet constants + reference date
 PLANET_CONSTANTS = {
     "Earth": {
         "constants": [86400, 24, 3600, 365, 15.0, 0],
@@ -101,23 +101,31 @@ def convert_api():
     if from_planet not in PLANET_CONSTANTS or to_planet not in PLANET_CONSTANTS:
         return jsonify({"error": "Unsupported planet"}), 400
 
+    from_constants = PLANET_CONSTANTS[from_planet]["constants"]
+    to_constants = PLANET_CONSTANTS[to_planet]["constants"]
+
     try:
-        if from_planet == "Earth":
+        if from_planet == to_planet:
+            if from_planet == "Earth":
+                earth_dt = parse_earth_datetime(date, time, from_tz)
+                result = format_earth_datetime(earth_dt, to_tz)
+            else:
+                # Convert to Earth then back to same planet at new longitude
+                intermediate = convert_to_earth(date, time, from_constants, from_long, "UTC")
+                earth_dt = datetime.strptime(intermediate, "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+                result = convert_from_earth(earth_dt, to_constants, to_long)
+
+        elif from_planet == "Earth":
             earth_dt = parse_earth_datetime(date, time, from_tz)
-            to_constants = PLANET_CONSTANTS[to_planet]["constants"]
             result = convert_from_earth(earth_dt, to_constants, to_long)
 
         elif to_planet == "Earth":
-            from_constants = PLANET_CONSTANTS[from_planet]["constants"]
             result = convert_to_earth(date, time, from_constants, from_long, to_tz)
 
         else:
-            from_constants = PLANET_CONSTANTS[from_planet]["constants"]
-            to_constants = PLANET_CONSTANTS[to_planet]["constants"]
-            # First convert to Earth
             intermediate = convert_to_earth(date, time, from_constants, from_long, "UTC")
-            intermediate_dt = datetime.strptime(intermediate, "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
-            result = convert_from_earth(intermediate_dt, to_constants, to_long)
+            earth_dt = datetime.strptime(intermediate, "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+            result = convert_from_earth(earth_dt, to_constants, to_long)
 
     except Exception as e:
         result = f"Error during conversion: {e}"
